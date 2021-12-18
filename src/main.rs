@@ -3,23 +3,12 @@ use clap::{value_t, App, Arg, ArgMatches, SubCommand};
 use crypto::digest::Digest;
 use crypto::sha2;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::fs::Metadata;
 use std::io::prelude::*;
-use std::path::PathBuf;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 struct FSnapShot {
     fpath: String,
-
-    #[serde(skip_serializing, skip_deserializing)]
-    meta: Option<Metadata>,
     hash: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-struct FHistory {
-    snaps: HashMap<String, PathBuf>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -29,11 +18,11 @@ struct State {
 
 impl State {
     fn load(f: &str) -> Result<State> {
-        let files = serde_json::from_reader::<std::fs::File, Vec<FSnapShot>>(
+        let state = serde_json::from_reader::<std::fs::File, Self>(
             std::fs::File::open(f).context("Could not open file")?,
         )?;
 
-        Ok(State { files: files })
+        Ok(state)
     }
 
     pub fn save(&self, path: &str) -> Result<State> {
@@ -52,7 +41,7 @@ impl State {
 
 fn init(_args: &ArgMatches) -> Result<()> {
     std::fs::create_dir(".flog")?;
-    State::new().save(".flog/config")?;
+    State::new().save(".flog/index")?;
     Ok(())
 }
 
@@ -62,16 +51,13 @@ fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
     let fpath = value_t!(args.value_of("file"), String).context("No path..")?;
     let mut file = std::fs::File::open(&fpath)?;
     file.read_to_string(&mut contents)?;
-    file.read_to_string(&mut contents)?;
-    let meta = file.metadata()?;
 
     hasher.input_str(&contents);
     state.files.push(FSnapShot {
         fpath: fpath,
-        meta: Some(meta),
         hash: hasher.result_str(),
     });
-    state.save(".flog/config")?;
+    state.save(".flog/index")?;
     Ok(())
 }
 
@@ -91,14 +77,16 @@ pub fn build() -> clap::App<'static, 'static> {
     app
 }
 
-fn dispatch(matches: &ArgMatches) {
-    let state = State::load(".flog")
-        .or_else(|_| State::new().save(".flog/config"))
-        .or(Err("Failed loading config"));
+fn load_index() -> State {
+    State::load(".flog/index")
+        //.or_else(|_| State::new().save(".flog/index"))
+        .expect("Failed loading or creating config")
+}
 
+fn dispatch(matches: &ArgMatches) {
     match matches.subcommand() {
         ("init", Some(sargs)) => init(sargs),
-        ("append", Some(sargs)) => append(sargs, &mut state.unwrap()),
+        ("append", Some(sargs)) => append(sargs, &mut load_index()),
         _ => Err(anyhow!("Unrecognized command")),
     }
     .unwrap_or_else(|e| {
