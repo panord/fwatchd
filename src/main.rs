@@ -3,17 +3,12 @@ use clap::{value_t, App, Arg, ArgMatches, SubCommand};
 use crypto::digest::Digest;
 use crypto::sha2;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io::prelude::*;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
-struct FSnapShot {
-    fpath: String,
-    hash: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
 struct State {
-    files: Vec<FSnapShot>,
+    files: HashMap<String, HashMap<String, String>>,
 }
 
 impl State {
@@ -35,7 +30,9 @@ impl State {
     }
 
     pub fn new() -> State {
-        State { files: vec![] }
+        State {
+            files: HashMap::new(),
+        }
     }
 }
 
@@ -48,15 +45,27 @@ fn init(_args: &ArgMatches) -> Result<()> {
 fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
     let mut hasher = sha2::Sha256::new();
     let mut contents = String::new();
-    let fpath = value_t!(args.value_of("file"), String).context("No path..")?;
+    let fname = value_t!(args.value_of("file"), String).context("No path..")?;
+    let fpath = std::path::Path::new(&fname);
     let mut file = std::fs::File::open(&fpath)?;
     file.read_to_string(&mut contents)?;
 
     hasher.input_str(&contents);
-    state.files.push(FSnapShot {
-        fpath: fpath,
-        hash: hasher.result_str(),
-    });
+    let target = format!(
+        ".flog/{}-{}",
+        fpath.display().to_string(),
+        hasher.result_str()
+    );
+    println!("{}", &target);
+    std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
+    std::fs::copy(&fpath, &target).expect("Failed to save file version");
+
+    state
+        .files
+        .entry(fpath.display().to_string())
+        .or_insert(HashMap::new())
+        .insert(hasher.result_str(), target);
+
     state.save(".flog/index")?;
     Ok(())
 }
@@ -64,7 +73,7 @@ fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
 pub fn build() -> clap::App<'static, 'static> {
     let mut app = App::new("flog - the forgetful file log.")
         .version("2021")
-        .author("Patrik Lundgren <patrik.lundgren@outlook.com>")
+        .author("Patrik Lundgren <patrik.lundgren.95@gmail.com>")
         .about("flog has a short but excellent memory, it remembers file(s) by name and \n");
 
     app = app.subcommand(SubCommand::with_name("init").about("Initialize .flog directory."));
@@ -79,7 +88,7 @@ pub fn build() -> clap::App<'static, 'static> {
 
 fn load_index() -> State {
     State::load(".flog/index")
-        //.or_else(|_| State::new().save(".flog/index"))
+        .or_else(|_| State::new().save(".flog/index"))
         .expect("Failed loading or creating config")
 }
 
