@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use clap::{value_t, App, Arg, ArgMatches, SubCommand};
 use crypto::digest::Digest;
 use crypto::sha2;
+use inotify::{Inotify, WatchMask};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::prelude::*;
@@ -42,14 +43,13 @@ fn init(_args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
+fn do_append(state: &mut State, fname: &str) -> Result<()> {
     let mut hasher = sha2::Sha256::new();
     let mut contents = String::new();
-    let fname = value_t!(args.value_of("file"), String).context("No path..")?;
     let fpath = std::path::Path::new(&fname);
     let mut file = std::fs::File::open(&fpath)?;
-    file.read_to_string(&mut contents)?;
 
+    file.read_to_string(&mut contents)?;
     hasher.input_str(&contents);
     let target = format!(
         ".flog/{}-{}",
@@ -70,6 +70,25 @@ fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
     Ok(())
 }
 
+fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
+    let fname = value_t!(args.value_of("file"), String).context("No path..")?;
+
+    return do_append(state, &fname);
+}
+
+fn watch(args: &ArgMatches, state: &mut State) -> Result<()> {
+    let mut inotify = Inotify::init()?;
+    let fname = value_t!(args.value_of("file"), String).context("No path..")?;
+    inotify.add_watch(&fname, WatchMask::CLOSE_WRITE)?;
+
+    let mut buffer = [0; 1024];
+    let events = inotify.read_events_blocking(&mut buffer);
+    for _ in events {
+        do_append(state, &fname)?;
+    }
+    Ok(())
+}
+
 pub fn build() -> clap::App<'static, 'static> {
     let mut app = App::new("flog - the forgetful file log.")
         .version("2021")
@@ -77,11 +96,17 @@ pub fn build() -> clap::App<'static, 'static> {
         .about("flog has a short but excellent memory, it remembers file(s) by name and \n");
 
     app = app.subcommand(SubCommand::with_name("init").about("Initialize .flog directory."));
-    app = app.subcommand(
-        SubCommand::with_name("append")
-            .about("Append file-snapshot to history.")
-            .arg(Arg::with_name("file").required(true).takes_value(true)),
-    );
+    app = app
+        .subcommand(
+            SubCommand::with_name("append")
+                .about("Append file-snapshot to history.")
+                .arg(Arg::with_name("file").required(true).takes_value(true)),
+        )
+        .subcommand(
+            SubCommand::with_name("watch")
+                .about("watch file, take snapshot when changed.")
+                .arg(Arg::with_name("file").required(true).takes_value(true)),
+        );
 
     app
 }
@@ -96,6 +121,7 @@ fn dispatch(matches: &ArgMatches) {
     match matches.subcommand() {
         ("init", Some(sargs)) => init(sargs),
         ("append", Some(sargs)) => append(sargs, &mut load_index()),
+        ("watch", Some(sargs)) => watch(sargs, &mut load_index()),
         _ => Err(anyhow!("Unrecognized command")),
     }
     .unwrap_or_else(|e| {
