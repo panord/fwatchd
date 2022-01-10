@@ -1,4 +1,5 @@
 use clap::Parser;
+use daemonize::Daemonize;
 use flib::*;
 use inotify::{EventMask, Inotify, WatchMask};
 use std::collections::HashMap;
@@ -33,6 +34,19 @@ fn main() {
             .expect(&format!("Failed to add watch for {}", k));
 
         wdm.insert(wd, k);
+    }
+
+    let daemonize = Daemonize::new()
+        .pid_file("/tmp/flogd.pid")
+        .chown_pid_file(true)
+        .working_directory("/tmp") // for default behaviour.
+        .user("flog")
+        .group("flog")
+        .umask(0o777);
+
+    match daemonize.start() {
+        Ok(_) => println!("Success, daemonized"),
+        Err(e) => eprintln!("Error, {}", e),
     }
 
     let mut buffer = [0; 1024];
