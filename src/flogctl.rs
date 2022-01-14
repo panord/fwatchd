@@ -5,7 +5,7 @@ use flib::*;
 fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
     let fname: String = args.value_of_t("file").context("No path..")?;
 
-    return do_append(state, &fname);
+    do_append(state, &fname)
 }
 
 pub fn build() -> clap::App<'static> {
