@@ -17,12 +17,7 @@ pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
 
     file.read_to_string(&mut contents)?;
     hasher.input_str(&contents);
-    let target = format!(
-        "{}/{}-{}",
-        INDEXD,
-        fpath.display().to_string(),
-        hasher.result_str()
-    );
+    let target = format!("{}/{}-{}", INDEXD, fpath.display(), hasher.result_str());
     println!("{}", &target);
     std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
     std::fs::copy(&fpath, &target).expect("Failed to save file version");
@@ -30,7 +25,7 @@ pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
     state
         .files
         .entry(fpath.display().to_string())
-        .or_insert(HashMap::new())
+        .or_insert_with(HashMap::default)
         .insert(hasher.result_str(), target);
 
     state.save(INDEX)?;
@@ -58,7 +53,7 @@ impl State {
     pub fn save(&self, path: &str) -> Result<State> {
         let json = serde_json::to_string_pretty(&self).context("Failed to serialize state")?;
         std::fs::File::create(&path)
-            .and_then(|mut f| f.write_all(&json.as_bytes()))
+            .and_then(|mut f| f.write_all(json.as_bytes()))
             .context("Failed to save file.")?;
 
         Ok(self.clone())
@@ -68,5 +63,11 @@ impl State {
         State {
             files: HashMap::new(),
         }
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
     }
 }

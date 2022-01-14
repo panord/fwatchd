@@ -31,7 +31,7 @@ fn main() {
     for (k, _) in state.files.clone() {
         let wd = inotify
             .add_watch(&k, WatchMask::CLOSE_WRITE)
-            .expect(&format!("Failed to add watch for {}", k));
+            .unwrap_or_else(|_| panic!("Failed to add watch for {}", k));
 
         wdm.insert(wd, k);
     }
@@ -52,13 +52,13 @@ fn main() {
     let mut buffer = [0; 1024];
     loop {
         let events = inotify.read_events_blocking(&mut buffer).unwrap();
-        for e in events.into_iter() {
+        for e in events {
             let name = wdm[&e.wd].clone();
 
             if args.persistent && e.mask == EventMask::IGNORED {
                 let wd = inotify
                     .add_watch(&name, WatchMask::CLOSE_WRITE)
-                    .expect(&format!("Failed to add watch for {}", name));
+                    .unwrap_or_else(|_| panic!("Failed to add watch for {}", name));
 
                 wdm.remove(&e.wd);
                 wdm.insert(wd, name.clone());
