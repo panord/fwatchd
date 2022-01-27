@@ -29,20 +29,24 @@ pub fn build() -> clap::App<'static> {
     app
 }
 
-fn dispatch(matches: &ArgMatches) {
+fn dispatch(app: &mut App, matches: &ArgMatches) {
     match matches.subcommand() {
         Some(("append", sargs)) => append(sargs, &mut load_index()),
         //        ("watch", sargs) => watch(sargs, &mut load_index()),
+        None => {
+            println!("{}", app.render_usage());
+            Ok(())
+        }
         _ => Err(anyhow!("Unrecognized command")),
     }
     .unwrap();
 }
 
 fn main() {
-    let app = build();
+    let mut app = build();
     let matches = app.clone().try_get_matches();
     match matches {
-        Ok(m) => dispatch(&m),
+        Ok(m) => dispatch(&mut app, &m),
         Err(msg) => println!("{}", msg),
     };
 }
