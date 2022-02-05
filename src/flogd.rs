@@ -1,4 +1,5 @@
 use clap::Parser;
+
 use daemonize::Daemonize;
 use flib::*;
 use inotify::{EventMask, Inotify, WatchMask};
@@ -37,9 +38,9 @@ fn main() {
     }
 
     let daemonize = Daemonize::new()
-        .pid_file("/tmp/flogd.pid")
+        .pid_file("/var/run/flogd.pid")
         .chown_pid_file(true)
-        .working_directory("/tmp") // for default behaviour.
+        .working_directory("/var/run/flog")
         .user("flog")
         .group("flog")
         .umask(0o777);
