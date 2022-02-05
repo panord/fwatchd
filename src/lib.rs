@@ -33,7 +33,7 @@ pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
 }
 
 pub fn load_index() -> State {
-    State::load(INDEX).expect("Failed loading or creating config")
+    State::load(INDEX).unwrap_or_else(|_| State::new())
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
