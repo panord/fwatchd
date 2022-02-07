@@ -12,6 +12,14 @@ struct Args {
     /// Persistently try to setup a new inotify watch when IN_IGNORE event is received
     #[clap(short, long)]
     persistent: bool,
+    #[clap(short, long, default_value = "/var/run/flog.pid")]
+    pid_file: String,
+    #[clap(short, long, default_value = "flog")]
+    user: String,
+    #[clap(short, long, default_value = "flog")]
+    group: String,
+    #[clap(short, long, default_value = "/var/run/flog")]
+    working_directory: String,
 }
 
 pub fn try_init() {
@@ -38,11 +46,11 @@ fn main() {
     }
 
     let daemonize = Daemonize::new()
-        .pid_file("/var/run/flogd.pid")
+        .pid_file(args.pid_file)
         .chown_pid_file(true)
-        .working_directory("/var/run/flog")
-        .user("flog")
-        .group("flog")
+        .working_directory(args.working_directory)
+        .user(args.user.as_str())
+        .group(args.group.as_str())
         .umask(0o777);
 
     match daemonize.start() {
