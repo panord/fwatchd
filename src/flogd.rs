@@ -1,10 +1,16 @@
 use clap::Parser;
-
 use daemonize::Daemonize;
 use flib::*;
 use inotify::{EventMask, Inotify, WatchMask};
+use log::{error, info, warn, LevelFilter};
 use std::collections::HashMap;
+use std::ffi::CString;
+use std::io::Read;
+use std::os::raw::{c_char, c_int};
+use std::os::unix::net::UnixListener;
 use std::path::Path;
+use syslog::BasicLogger;
+use syslog::{Facility, Formatter3164};
 
 #[derive(Parser, Debug)]
 #[clap(about, version, author)]
@@ -29,6 +35,10 @@ pub fn try_init() {
     }
 }
 
+extern "C" {
+    fn unlink(c_int: *const c_char) -> c_int;
+}
+const SOCK_PATH: &str = "/var/run/flogd.socket";
 fn main() {
     let args = Args::parse();
 
@@ -45,6 +55,11 @@ fn main() {
         wdm.insert(wd, k);
     }
 
+    unsafe {
+        let sock_path_c = CString::new(SOCK_PATH).unwrap();
+        unlink(sock_path_c.as_ptr());
+    }
+    let listener = UnixListener::bind(SOCK_PATH).unwrap();
     let daemonize = Daemonize::new()
         .pid_file(args.pid_file)
         .chown_pid_file(true)
@@ -55,7 +70,30 @@ fn main() {
 
     match daemonize.start() {
         Ok(_) => println!("Success, daemonized"),
-        Err(e) => eprintln!("Error, {}", e),
+        Err(e) => panic!("Error, {}", e),
+    }
+
+    let formatter = Formatter3164 {
+        facility: Facility::LOG_DAEMON,
+        hostname: None,
+        process: "flog".into(),
+        pid: 0,
+    };
+
+    let logger = syslog::unix(formatter).expect("Failed to open syslog");
+
+    log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
+        .map(|()| log::set_max_level(LevelFilter::Info))
+        .expect("Failed to setup logger");
+
+    match listener.accept() {
+        Ok((mut socket, addr)) => {
+            info!("Got a client: {:?}", addr);
+            let mut resp = String::new();
+            socket.read_to_string(&mut resp).unwrap();
+            info!("Got message {}", resp);
+        }
+        Err(e) => error!("accept function failed: {:?}", e),
     }
 
     let mut buffer = [0; 1024];
@@ -65,12 +103,11 @@ fn main() {
             let name = wdm[&e.wd].clone();
 
             if args.persistent && e.mask == EventMask::IGNORED {
-                let wd = inotify
-                    .add_watch(&name, WatchMask::CLOSE_WRITE)
-                    .unwrap_or_else(|_| panic!("Failed to add watch for {}", name));
-
-                wdm.remove(&e.wd);
-                wdm.insert(wd, name.clone());
+                if let Ok(wd) = inotify.add_watch(&name, WatchMask::CLOSE_WRITE) {
+                    wdm.remove(&e.wd);
+                    wdm.insert(wd, name.clone());
+                }
+                warn!("Failed to add watch for {}", name);
             }
 
             do_append(&mut state, &name).unwrap();
