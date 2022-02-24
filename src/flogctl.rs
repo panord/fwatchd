@@ -1,52 +1,107 @@
 use anyhow::{anyhow, Context, Result};
-use clap::{App, Arg, ArgMatches};
+use clap::{Arg, ArgMatches, Command};
 use flib::*;
+use std::io::prelude::*;
+use std::os::unix::net::UnixStream;
 
-fn append(args: &ArgMatches, state: &mut State) -> Result<()> {
-    let fname: String = args.value_of_t("file").context("No path..")?;
-
-    do_append(state, &fname)
-}
-
-fn list(args: &ArgMatches, state: &mut State) -> Result<()> {
-    let fname: Option<String> = args.value_of_t("file").ok();
-    if fname.is_some() {
-        let h = state
-            .files
-            .get(&fname.unwrap())
-            .context("Found no such tracked file")?;
-        println!("{:?}", h);
-    } else {
-        println!("{:?}", state.files);
-    }
-    Ok(())
-}
-
-pub fn build() -> clap::App<'static> {
-    let mut app = App::new("flog - the forgetful file log.")
+pub fn build() -> clap::Command<'static> {
+    let mut app = Command::new("flog - the forgetful file log.")
         .version("2021")
         .author("Patrik Lundgren <patrik.lundgren.95@gmail.com>")
         .about("flog has a short but excellent memory, it remembers file(s) by name and \n");
 
     app = app.subcommand(
-        App::new("track")
+        Command::new("track")
             .about("track file, take snapshot when changed.")
             .arg(Arg::new("file").required(true).takes_value(true)),
     );
 
     app = app.subcommand(
-        App::new("list")
+        Command::new("list")
             .about("list available file snapshots")
             .arg(Arg::new("file").takes_value(true)),
     );
 
+    app = app.subcommand(
+        Command::new("echo")
+            .about("Test unix socket for daemon")
+            .arg(Arg::new("message").takes_value(true)),
+    );
+
+    app = app.subcommand(
+        Command::new("echoerr")
+            .about("Test unix socket for daemon")
+            .arg(Arg::new("message").takes_value(true)),
+    );
+
     app
 }
+fn track(args: &ArgMatches) -> Result<()> {
+    let payload: String = args.value_of_t("file").context("No pattern provided")?;
+    let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
+    let mut stream = UnixStream::connect(SOCK_PATH)?;
+    let mut response = String::new();
 
-fn dispatch(app: &mut App, matches: &ArgMatches) {
+    let pkt = Packet {
+        command: flib::Command::TRACK,
+        payload,
+    };
+    stream.write_all(&bincode::serialize(&pkt)?)?;
+    stream.read_to_string(&mut response)?;
+    println!("{}", response);
+    Ok(())
+}
+
+fn list(args: &ArgMatches) -> Result<()> {
+    let payload: String = args
+        .value_of_t("pattern")
+        .ok()
+        .or_else(|| Some("*".to_string()))
+        .context("No pattern provided")?;
+
+    let mut stream = UnixStream::connect(SOCK_PATH)?;
+    let mut response = String::new();
+    let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
+    let pkt = Packet {
+        command: flib::Command::LIST,
+        payload,
+    };
+
+    stream.write_all(&bincode::serialize(&pkt)?)?;
+    stream.read_to_string(&mut response)?;
+    println!("{}", response);
+    Ok(())
+}
+
+fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
+    let msg: String = args
+        .value_of_t("message")
+        .ok()
+        .context("No message provided")?;
+    let mut stream = UnixStream::connect(SOCK_PATH)?;
+    let mut response = String::new();
+    let payload = bincode::serialize(&msg).context("Failed to serialize payload")?;
+    let pkt = Packet {
+        command: if is_err {
+            flib::Command::ECHOERR
+        } else {
+            flib::Command::ECHO
+        },
+        payload,
+    };
+
+    stream.write_all(&bincode::serialize(&pkt)?)?;
+    stream.read_to_string(&mut response)?;
+    println!("{}", response);
+    Ok(())
+}
+
+fn dispatch(app: &mut Command, matches: &ArgMatches) {
     match matches.subcommand() {
-        Some(("track", sargs)) => append(sargs, &mut load_index()),
-        Some(("list", sargs)) => list(sargs, &mut load_index()),
+        Some(("track", sargs)) => track(sargs),
+        Some(("list", sargs)) => list(sargs),
+        Some(("echo", sargs)) => echo(sargs, false),
+        Some(("echoerr", sargs)) => echo(sargs, true),
         None => {
             println!("{}", app.render_usage());
             Ok(())

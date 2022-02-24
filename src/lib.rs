@@ -1,45 +1,28 @@
 use anyhow::{Context, Result};
-use crypto::digest::Digest;
-use crypto::sha2;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::prelude::*;
 
-pub const VARD: &str = "/var/run/flog";
-pub const INDEX: &str = "/var/run/flog/index";
-pub const INDEXD: &str = "/var/run/flog/index.d";
-
-pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
-    let mut hasher = sha2::Sha256::new();
-    let mut contents = String::new();
-    let fpath = std::path::Path::new(&fname);
-    let mut file = std::fs::File::open(&fpath)?;
-
-    file.read_to_string(&mut contents)?;
-    hasher.input_str(&contents);
-    let target = format!("{}/{}-{}", INDEXD, fpath.display(), hasher.result_str());
-    println!("{}", &target);
-    std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
-    std::fs::copy(&fpath, &target).expect("Failed to save file version");
-
-    state
-        .files
-        .entry(fpath.display().to_string())
-        .or_insert_with(HashMap::default)
-        .insert(hasher.result_str(), target);
-
-    state.save(INDEX)?;
-    Ok(())
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Command {
+    ECHOERR,
+    ECHO,
+    LIST,
+    TRACK,
 }
 
-pub fn load_index() -> State {
-    State::load(INDEX).unwrap_or_else(|_| State::new())
+#[derive(Serialize, Deserialize)]
+pub struct Packet {
+    pub command: Command,
+    pub payload: Vec<u8>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct State {
     pub files: HashMap<String, HashMap<String, String>>,
 }
+
+pub const SOCK_PATH: &str = "/var/run/flogd.socket";
 
 impl State {
     pub fn load(f: &str) -> Result<State> {
