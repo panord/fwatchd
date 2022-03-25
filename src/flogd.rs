@@ -158,8 +158,8 @@ fn listen(listener: &UnixListener, state: &mut State) -> bool {
         Ok((mut s, _)) => {
             info!(
                 "Processing request on {:#?} from {:#?}",
-                s.local_addr(),
-                s.peer_addr()
+                s.local_addr().unwrap(),
+                s.peer_addr().unwrap()
             );
             process(&mut s, state)
         }
