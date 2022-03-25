@@ -6,7 +6,12 @@ use daemonize::Daemonize;
 use flib::*;
 use inotify::{EventMask, Inotify, WatchMask};
 use log::{debug, error, info, warn, LevelFilter};
-use nix::poll::{ppoll, PollFd, PollFlags};
+#[cfg(target_os = "macos")]
+use nix::poll::poll;
+#[cfg(target_os = "linux")]
+use nix::poll::ppoll;
+use nix::poll::{PollFd, PollFlags};
+#[cfg(target_os = "linux")]
 use nix::sys::signal::SigSet;
 use std::collections::HashMap;
 use std::ffi::CString;
@@ -220,10 +225,13 @@ fn main() {
         .collect();
 
     loop {
-        println!(
-            "Events on {} fds",
-            ppoll(rfd.as_mut_slice(), None, SigSet::all()).unwrap()
-        );
+        #[cfg(target_os = "linux")]
+        let n = ppoll(rfd.as_mut_slice(), None, SigSet::all()).unwrap();
+
+        #[cfg(target_os = "macos")]
+        let n = poll(rfd.as_mut_slice(), 0).unwrap();
+        println!("Events on {} fds", n);
+
         let reload = match rfd[0].revents() {
             Some(ev) => {
                 if !ev.is_empty() {
