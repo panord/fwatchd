@@ -68,7 +68,6 @@ pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
     file.read_to_string(&mut contents)?;
     hasher.input_str(&contents);
     let target = format!("{}/{}-{}", INDEXD, fpath.display(), hasher.result_str());
-    println!("{}", &target);
     std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
     std::fs::copy(&fpath, &target).expect("Failed to save file version");
 
@@ -187,7 +186,7 @@ fn main() {
 
     if !args.foreground {
         match daemonize.start() {
-            Ok(_) => println!("Success, daemonized"),
+            Ok(_) => {}
             Err(e) => error!("Failed to daemonize: {}", e),
         }
     }
@@ -230,13 +229,10 @@ fn main() {
 
         #[cfg(target_os = "macos")]
         let n = poll(rfd.as_mut_slice(), 0).unwrap();
-        println!("Events on {} fds", n);
 
         let reload = match rfd[0].revents() {
             Some(ev) => {
                 if !ev.is_empty() {
-                    println!("Event {:?} on UDS", ev);
-                    // Should be no event here
                     listen(&listener, &mut state)
                 } else {
                     false
@@ -246,7 +242,7 @@ fn main() {
         };
 
         if reload {
-            println!("Reloading inotify watches!!!");
+            info!("Reloading inotify watches");
             for (k, _) in state.files.clone() {
                 let wd = inotify
                     .add_watch(&k, WatchMask::CLOSE_WRITE)
@@ -266,7 +262,7 @@ fn main() {
         }
 
         for e in events.unwrap() {
-            println!("Processing inotify event");
+            debug!("Processing inotify event {:?}", e);
             let name = wdm[&e.wd].clone();
             if args.persistent && e.mask == EventMask::IGNORED {
                 if let Ok(wd) = inotify.add_watch(&name, WatchMask::CLOSE_WRITE) {
