@@ -13,10 +13,9 @@ use nix::poll::ppoll;
 use nix::poll::{PollFd, PollFlags};
 #[cfg(target_os = "linux")]
 use nix::sys::signal::SigSet;
+use nix::unistd::unlink;
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::io::{Read, Write};
-use std::os::raw::{c_char, c_int};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
@@ -53,10 +52,6 @@ pub fn try_init() {
         std::fs::create_dir_all(INDEXD).unwrap();
         State::new().save(INDEX).unwrap();
     }
-}
-
-extern "C" {
-    fn unlink(c_int: *const c_char) -> c_int;
 }
 
 pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
@@ -205,10 +200,7 @@ fn main() {
         .expect("Failed to setup logger");
 
     let mut buffer = [0; 1024];
-    unsafe {
-        let sock_path_c = CString::new(SOCK_PATH).unwrap();
-        unlink(sock_path_c.as_ptr());
-    }
+    let _ = unlink(SOCK_PATH);
     let listener = UnixListener::bind(SOCK_PATH).unwrap();
     let mut inotify = Inotify::init().expect("Failed to intialize inotify object");
     for (k, _) in state.files.clone() {
