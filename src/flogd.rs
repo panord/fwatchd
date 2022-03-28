@@ -14,11 +14,13 @@ use nix::poll::{PollFd, PollFlags};
 #[cfg(target_os = "linux")]
 use nix::sys::signal::SigSet;
 use nix::unistd::unlink;
+use signal_hook::flag;
 use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
+use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 use syslog::BasicLogger;
 use syslog::{Facility, Formatter3164};
 
@@ -192,9 +194,9 @@ fn main() {
         process: "flog".into(),
         pid: 0,
     };
+
     let mut wdm = HashMap::new();
     let logger = syslog::unix(formatter).expect("Failed to open syslog");
-
     log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
         .map(|()| log::set_max_level(LevelFilter::Debug))
         .expect("Failed to setup logger");
@@ -210,19 +212,26 @@ fn main() {
 
         wdm.insert(wd, k);
     }
+
     let mut rfd: Vec<PollFd> = vec![listener.as_raw_fd(), inotify.as_raw_fd()]
         .iter()
         .map(|x| PollFd::new(*x, PollFlags::all()))
         .collect();
 
+    let term = Arc::new(AtomicBool::new(false));
+    let hup = Arc::new(AtomicBool::new(false));
+
+    flag::register(signal_hook::consts::SIGTERM, Arc::clone(&term)).unwrap();
+    flag::register(signal_hook::consts::SIGINT, Arc::clone(&term)).unwrap();
+    flag::register(signal_hook::consts::SIGHUP, Arc::clone(&hup)).unwrap();
     loop {
         #[cfg(target_os = "linux")]
-        let n = ppoll(rfd.as_mut_slice(), None, SigSet::all()).unwrap();
+        let _ = ppoll(rfd.as_mut_slice(), None, SigSet::empty());
 
         #[cfg(target_os = "macos")]
-        let n = poll(rfd.as_mut_slice(), 0).unwrap();
+        let _ = poll(rfd.as_mut_slice(), 0).unwrap();
 
-        let reload = match rfd[0].revents() {
+        let mut reload = match rfd[0].revents() {
             Some(ev) => {
                 if !ev.is_empty() {
                     listen(&listener, &mut state)
@@ -232,6 +241,15 @@ fn main() {
             }
             None => false,
         };
+
+        if term.load(Ordering::Relaxed) {
+            break;
+        }
+
+        if hup.load(Ordering::Relaxed) {
+            state = load_index();
+            reload = true;
+        }
 
         if reload {
             info!("Reloading inotify watches");
@@ -265,7 +283,7 @@ fn main() {
             }
 
             do_append(&mut state, &name).unwrap();
-            state.save(INDEX).unwrap();
         }
     }
+    state.save(INDEX).unwrap();
 }
