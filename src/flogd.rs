@@ -243,10 +243,12 @@ fn main() {
         };
 
         if term.load(Ordering::Relaxed) {
+            info!("Received SIGTERM | SIGINT, exiting");
             break;
         }
 
         if hup.load(Ordering::Relaxed) {
+            info!("Received SIGHUP, reloading index");
             state = load_index();
             reload = true;
         }
