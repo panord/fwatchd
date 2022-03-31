@@ -97,7 +97,7 @@ fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
 }
 
 fn dispatch(app: &mut Command, matches: &ArgMatches) {
-    match matches.subcommand() {
+    if let Err(msg) = match matches.subcommand() {
         Some(("track", sargs)) => track(sargs),
         Some(("list", sargs)) => list(sargs),
         Some(("echo", sargs)) => echo(sargs, false),
@@ -107,8 +107,9 @@ fn dispatch(app: &mut Command, matches: &ArgMatches) {
             Ok(())
         }
         _ => Err(anyhow!("Unrecognized command")),
+    } {
+        println!("{}", msg);
     }
-    .unwrap();
 }
 
 fn main() {
