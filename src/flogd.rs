@@ -249,6 +249,8 @@ fn main() {
 
         if hup.load(Ordering::Relaxed) {
             info!("Received SIGHUP, reloading index");
+            // XXX: Please observe that this discards the current
+            // state. This is likely not desired during normal execution
             state = load_index();
             reload = true;
         }
