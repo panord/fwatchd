@@ -36,7 +36,7 @@ struct Args {
     /// Persistently try to setup a new inotify watch when IN_IGNORE event is received
     #[clap(short, long)]
     persistent: bool,
-    #[clap(short, long, default_value = "/var/run/flog.pid")]
+    #[clap(long, default_value = "/var/run/flog.pid")]
     pid_file: String,
     #[clap(short, long, default_value = "flog")]
     user: String,
