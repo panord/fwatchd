@@ -21,8 +21,7 @@ use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::Path;
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
-use syslog::BasicLogger;
-use syslog::{Facility, Formatter3164};
+use syslog::{BasicLogger, Facility, Formatter3164};
 
 const INDEX: &str = "/var/run/flog/index";
 const INDEXD: &str = "/var/run/flog/index.d";
@@ -56,23 +55,54 @@ pub fn try_init() {
     }
 }
 
-pub fn do_append(state: &mut State, fname: &str) -> Result<()> {
+fn script(fpath: &str, spath: &str) -> Result<()> {
+    std::process::Command::new(spath)
+        .arg(fpath)
+        .spawn()
+        .context(format!("Failed to execute {}", spath))?;
+
+    Ok(())
+}
+
+fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
     let mut hasher = sha2::Sha256::new();
     let mut contents = String::new();
     let fpath = std::path::Path::new(&fname);
     let mut file = std::fs::File::open(&fpath)?;
+
+    let astr = match alias.clone() {
+        Alias::BASENAME => Path::new(&fname)
+            .file_name()
+            .ok_or_else(|| anyhow!("Could not determine basename"))?
+            .to_str()
+            .ok_or_else(|| anyhow!("Could not convert to str"))?
+            .to_string(),
+        Alias::NAME(name) => name,
+        Alias::SCRIPT(spath) => String::from_utf8(
+            std::process::Command::new(spath)
+                .arg(&fname)
+                .output()?
+                .stdout,
+        )?
+        .trim()
+        .to_string(),
+    };
 
     file.read_to_string(&mut contents)?;
     hasher.input_str(&contents);
     let target = format!("{}/{}-{}", INDEXD, fpath.display(), hasher.result_str());
     std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
     std::fs::copy(&fpath, &target).expect("Failed to save file version");
-
     state
         .files
         .entry(fpath.display().to_string())
-        .or_insert_with(HashMap::default)
-        .insert(hasher.result_str(), target);
+        .or_insert(Entry {
+            action: Action::SAVE,
+            alias: alias.clone(),
+            snapshots: HashMap::default(),
+        })
+        .snapshots
+        .insert(hasher.result_str(), (astr, target));
 
     state.save(INDEX)?;
     Ok(())
@@ -104,12 +134,19 @@ fn list(state: &State, pkt: &Packet) -> Result<Vec<u8>> {
 }
 
 fn track(state: &mut State, pkt: &Packet) -> Result<Vec<u8>> {
-    let fname = bincode::deserialize::<String>(&pkt.payload).context("Failed to deserialize")?;
+    let track = bincode::deserialize::<Track>(&pkt.payload).context("Failed to deserialize")?;
 
-    do_append(state, &fname)?;
-    Ok(format!("Added {} to tracked files", fname)
-        .as_bytes()
-        .to_vec())
+    save(state, &track.fpath, &track.alias)?;
+    state
+        .files
+        .entry(track.fpath.clone())
+        .and_modify(|x| x.action = track.action.clone());
+    Ok(format!(
+        "Added {} with action {:?} and alias method {:?} to tracked files",
+        &track.fpath, &track.action, &track.alias,
+    )
+    .as_bytes()
+    .to_vec())
 }
 
 fn process(socket: &mut UnixStream, state: &mut State) -> bool {
@@ -167,6 +204,15 @@ fn listen(listener: &UnixListener, state: &mut State) -> bool {
     }
 }
 
+fn action(state: &mut State, fname: &str) -> Result<()> {
+    let entry = &state.files[fname].clone();
+
+    match &entry.action {
+        Action::SAVE => save(state, fname, &entry.alias),
+        Action::SCRIPT(spath) => script(fname, spath),
+    }
+}
+
 fn main() {
     let args = Args::parse();
 
@@ -184,7 +230,7 @@ fn main() {
     if !args.foreground {
         match daemonize.start() {
             Ok(_) => {}
-            Err(e) => error!("Failed to daemonize: {}", e),
+            Err(e) => println!("Failed to daemonize: {}", e),
         }
     }
 
@@ -286,7 +332,7 @@ fn main() {
                 warn!("Failed to add watch for {}", name);
             }
 
-            do_append(&mut state, &name).unwrap();
+            action(&mut state, &name).unwrap();
         }
     }
     state.save(INDEX).unwrap();
