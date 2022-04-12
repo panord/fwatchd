@@ -13,7 +13,17 @@ pub fn build() -> clap::Command<'static> {
     app = app.subcommand(
         Command::new("track")
             .about("track file, take snapshot when changed.")
-            .arg(Arg::new("file").required(true).takes_value(true)),
+            .arg(Arg::new("file").required(true).takes_value(true))
+            .arg(
+                Arg::new("script")
+                    .takes_value(true)
+                    .help("command which is executed on events"),
+            )
+            .arg(
+                Arg::new("alias")
+                    .takes_value(true)
+                    .help("Script called to determine an alias for a file given an event"),
+            ),
     );
 
     app = app.subcommand(
@@ -36,9 +46,23 @@ pub fn build() -> clap::Command<'static> {
 
     app
 }
+
 fn track(args: &ArgMatches) -> Result<()> {
-    let payload: String = args.value_of_t("file").context("No pattern provided")?;
-    let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
+    let fpath: String = args.value_of_t("file").context("No pattern provided")?;
+    let action = match args.value_of_t::<String>("script") {
+        Ok(path) => Action::SCRIPT(path),
+        _ => Action::SAVE,
+    };
+    let alias: Alias = match args.value_of_t::<String>("alias") {
+        Ok(spath) => Alias::SCRIPT(spath),
+        _ => Alias::BASENAME,
+    };
+    let track = Track {
+        fpath,
+        alias,
+        action,
+    };
+    let payload = bincode::serialize(&track).context("Failed to serialize payload")?;
     let mut stream = UnixStream::connect(SOCK_PATH)?;
     let mut response = String::new();
 

@@ -11,15 +11,43 @@ pub enum Command {
     TRACK,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum Alias {
+    SCRIPT(String),
+    BASENAME,
+    NAME(String),
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Packet {
     pub command: Command,
     pub payload: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Clone, Serialize, Deserialize, Debug)]
+pub enum Action {
+    SAVE,
+    SCRIPT(String),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Track {
+    pub fpath: String,
+    pub alias: Alias,
+    pub action: Action,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Entry {
+    // hash --> filename
+    pub snapshots: HashMap<String, (String, String)>,
+    pub action: Action,
+    pub alias: Alias,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct State {
-    pub files: HashMap<String, HashMap<String, String>>,
+    pub files: HashMap<String, Entry>,
 }
 
 pub const SOCK_PATH: &str = "/var/run/flogd.socket";
