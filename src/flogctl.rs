@@ -78,7 +78,7 @@ fn track(args: &ArgMatches) -> Result<()> {
 
 fn list(args: &ArgMatches) -> Result<()> {
     let payload: String = args
-        .value_of_t("pattern")
+        .value_of_t("file")
         .ok()
         .or_else(|| Some("*".to_string()))
         .context("No pattern provided")?;
