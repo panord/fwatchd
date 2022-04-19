@@ -121,13 +121,26 @@ fn echo(pkt: &Packet) -> Result<Vec<u8>> {
 fn list(state: &State, pkt: &Packet) -> Result<Vec<u8>> {
     let fname = bincode::deserialize::<String>(&pkt.payload).context("Failed to deserialize")?;
     let resp = match fname.as_str() {
-        "*" => format!("{:#?}", state.files).as_bytes().to_vec(),
+        "*" => {
+            let mut tmp = vec![];
+            for (k, v) in &state.files {
+                for (ks, vs) in &v.snapshots {
+                    tmp.append(&mut format!("{k} {ks:32} ({})\n", vs.0).as_bytes().to_vec());
+                }
+            }
+            tmp
+        }
         _ => {
             let h = state
                 .files
                 .get(&fname)
                 .context("Found no such tracked file")?;
-            format!("{:?}", h).as_bytes().to_vec()
+
+            let mut tmp = vec![];
+            for (ks, vs) in &h.snapshots {
+                tmp.append(&mut format!("{fname} {ks:32} ({})\n", vs.0).as_bytes().to_vec());
+            }
+            tmp
         }
     };
     Ok(resp)
