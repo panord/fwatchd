@@ -45,7 +45,7 @@ pub struct Entry {
     pub alias: Alias,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct State {
     pub files: HashMap<String, Entry>,
 }
