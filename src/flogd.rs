@@ -64,11 +64,18 @@ fn script(fpath: &str, spath: &str) -> Result<()> {
     Ok(())
 }
 
-fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
-    let mut hasher = sha2::Sha256::new();
+fn sha256sum(fpath: &Path) -> Result<String> {
     let mut contents = String::new();
-    let fpath = std::path::Path::new(&fname);
+    let mut hasher = sha2::Sha256::new();
     let mut file = std::fs::File::open(&fpath)?;
+
+    file.read_to_string(&mut contents)?;
+    hasher.input_str(&contents);
+    Ok(hasher.result_str())
+}
+
+fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
+    let fpath = std::path::Path::new(&fname);
 
     let astr = match alias.clone() {
         Alias::BASENAME => Path::new(&fname)
@@ -87,10 +94,8 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
         .trim()
         .to_string(),
     };
-
-    file.read_to_string(&mut contents)?;
-    hasher.input_str(&contents);
-    let target = format!("{}/{}-{}", INDEXD, fpath.display(), hasher.result_str());
+    let hash = sha256sum(fpath)?;
+    let target = format!("{}/{}-{}", INDEXD, fpath.display(), &hash);
     std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
     std::fs::copy(&fpath, &target).expect("Failed to save file version");
     state
@@ -102,7 +107,7 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
             snapshots: HashMap::default(),
         })
         .snapshots
-        .insert(hasher.result_str(), (astr, target));
+        .insert(hash, (astr, target));
 
     state.save(INDEX)?;
     Ok(())
@@ -125,7 +130,16 @@ fn list(state: &State, pkt: &Packet) -> Result<Vec<u8>> {
             let mut tmp = vec![];
             for (k, v) in &state.files {
                 for (ks, vs) in &v.snapshots {
-                    tmp.append(&mut format!("{k} {ks:32} ({})\n", vs.0).as_bytes().to_vec());
+                    let selected = if let Ok(hash) = sha256sum(Path::new(&k)) {
+                        hash == *ks
+                    } else {
+                        false
+                    };
+                    if selected {
+                        tmp.append(&mut format!("{k} {ks:32} ({}) *\n", vs.0).as_bytes().to_vec());
+                    } else {
+                        tmp.append(&mut format!("{k} {ks:32} ({})\n", vs.0).as_bytes().to_vec());
+                    }
                 }
             }
             tmp
@@ -138,7 +152,20 @@ fn list(state: &State, pkt: &Packet) -> Result<Vec<u8>> {
 
             let mut tmp = vec![];
             for (ks, vs) in &h.snapshots {
-                tmp.append(&mut format!("{fname} {ks:32} ({})\n", vs.0).as_bytes().to_vec());
+                let selected = if let Ok(hash) = sha256sum(Path::new(&fname)) {
+                    hash == *ks
+                } else {
+                    false
+                };
+                if selected {
+                    tmp.append(
+                        &mut format!("{fname} {ks:32} ({}) *\n", vs.0)
+                            .as_bytes()
+                            .to_vec(),
+                    );
+                } else {
+                    tmp.append(&mut format!("{fname} {ks:32} ({})\n", vs.0).as_bytes().to_vec());
+                }
             }
             tmp
         }
