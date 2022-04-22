@@ -9,6 +9,7 @@ pub enum Command {
     ECHO,
     LIST,
     TRACK,
+    SELECT,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -65,7 +66,7 @@ impl State {
         let json = serde_json::to_string_pretty(&self).context("Failed to serialize state")?;
         std::fs::File::create(&path)
             .and_then(|mut f| f.write_all(json.as_bytes()))
-            .context("Failed to save file.")?;
+            .context(format!("Failed to save file {path}"))?;
 
         Ok(self.clone())
     }

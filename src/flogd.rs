@@ -13,21 +13,22 @@ use nix::poll::ppoll;
 use nix::poll::{PollFd, PollFlags};
 #[cfg(target_os = "linux")]
 use nix::sys::signal::SigSet;
-use nix::unistd::unlink;
+use nix::unistd::{chown, unlink, Gid, Uid};
 use signal_hook::flag;
 use std::collections::HashMap;
+use std::ffi::CString;
 use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
 use std::os::unix::net::{UnixListener, UnixStream};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 use syslog::{BasicLogger, Facility, Formatter3164};
 
 const INDEX: &str = "/var/run/flog/index";
 const INDEXD: &str = "/var/run/flog/index.d";
 
-pub fn load_index() -> State {
-    State::load(INDEX).unwrap_or_else(|_| State::new())
+pub fn load_index(workdir: &str) -> State {
+    State::load(&format!("{workdir}/index")).unwrap_or_else(|_| State::new())
 }
 
 #[derive(Parser, Debug)]
@@ -46,13 +47,6 @@ struct Args {
     working_directory: String,
     #[clap(long)]
     foreground: bool,
-}
-
-pub fn try_init() {
-    if !Path::new(INDEXD).is_dir() {
-        std::fs::create_dir_all(INDEXD).unwrap();
-        State::new().save(INDEX).unwrap();
-    }
 }
 
 fn script(fpath: &str, spath: &str) -> Result<()> {
@@ -96,8 +90,13 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
     };
     let hash = sha256sum(fpath)?;
     let target = format!("{}/{}-{}", INDEXD, fpath.display(), &hash);
-    std::fs::create_dir_all(&std::path::Path::new(&target).parent().unwrap())?;
-    std::fs::copy(&fpath, &target).expect("Failed to save file version");
+    std::fs::create_dir_all(
+        &std::path::Path::new(&target)
+            .parent()
+            .context("Failed to create directory for target")
+            .unwrap(),
+    )?;
+    std::fs::copy(&fpath, &target).context("Failed to save file version")?;
     state
         .files
         .entry(fpath.display().to_string())
@@ -173,6 +172,24 @@ fn list(state: &State, pkt: &Packet) -> Result<Vec<u8>> {
     Ok(resp)
 }
 
+fn select(state: &State, pkt: &Packet) -> Result<Vec<u8>> {
+    let (fpath, hash) =
+        bincode::deserialize::<(String, String)>(&pkt.payload).context("Failed to deserialize")?;
+
+    let nfpath = state
+        .files
+        .get(&fpath)
+        .context("Found no such tracked file")?
+        .snapshots
+        .get(&hash)
+        .context("Found no such file version")?
+        .clone()
+        .1;
+
+    std::fs::copy(&nfpath, &fpath).context("Failed to copy file {nfpath} to {fpath}")?;
+    Ok(format!("Selected {nfpath} ==> {fpath}").as_bytes().to_vec())
+}
+
 fn track(state: &mut State, pkt: &Packet) -> Result<Vec<u8>> {
     let track = bincode::deserialize::<Track>(&pkt.payload).context("Failed to deserialize")?;
 
@@ -200,6 +217,10 @@ fn process(socket: &mut UnixStream, state: &mut State) -> bool {
             Command::ECHOERR => echoerr(&pkt),
             Command::ECHO => echo(&pkt),
             Command::LIST => list(state, &pkt),
+            Command::SELECT => {
+                reload = true;
+                select(state, &pkt)
+            }
             Command::TRACK => {
                 reload = true;
                 track(state, &pkt)
@@ -247,6 +268,7 @@ fn listen(listener: &UnixListener, state: &mut State) -> bool {
 fn action(state: &mut State, fname: &str) -> Result<()> {
     let entry = &state.files[fname].clone();
 
+    info!("Action {:?} on {:?}", &entry.action, &fname);
     match &entry.action {
         Action::SAVE => save(state, fname, &entry.alias),
         Action::SCRIPT(spath) => script(fname, spath),
@@ -255,24 +277,50 @@ fn action(state: &mut State, fname: &str) -> Result<()> {
 
 fn main() {
     let args = Args::parse();
+    let _ = unlink(SOCK_PATH);
+    let listener = UnixListener::bind(SOCK_PATH).unwrap();
 
-    try_init();
+    let wdir = args.working_directory.clone();
+    let ddir = PathBuf::from(&wdir);
+    unsafe {
+        let uname = CString::new(args.user.clone())
+            .context("Found no such user")
+            .unwrap();
 
-    let mut state = load_index();
-    let daemonize = Daemonize::new()
-        .pid_file(args.pid_file)
-        .chown_pid_file(true)
-        .working_directory(args.working_directory)
-        .user(args.user.as_str())
-        .group(args.group.as_str())
-        .umask(0o777);
-
-    if !args.foreground {
-        match daemonize.start() {
-            Ok(_) => {}
-            Err(e) => println!("Failed to daemonize: {}", e),
+        let pw = libc::getpwnam(uname.as_ptr());
+        if pw.is_null() {
+            println!("No such user {}", args.user);
+            return;
         }
-    }
+        let uid: u32 = (*pw).pw_uid;
+        let gid: u32 = (*pw).pw_gid;
+
+        std::fs::create_dir_all(args.working_directory.clone())
+            .context("Failed to create runtime directory")
+            .unwrap();
+
+        let daemonize = Daemonize::new()
+            .chown_pid_file(true)
+            .working_directory(&ddir)
+            .user(uid)
+            .group(gid)
+            .privileged_action(move || {
+                chown(&ddir, Some(Uid::from_raw(uid)), Some(Gid::from_raw(gid)))
+                    .context("Failed to change owner/group of working directory")
+                    .unwrap();
+            });
+
+        if !args.foreground {
+            match daemonize.start() {
+                Ok(_) => error!("Daemonized!"),
+                Err(e) => println!("Failed to daemonize: {}", e),
+            }
+        }
+    };
+
+    std::fs::create_dir_all(Path::new(&args.working_directory).join("index.d"))
+        .context("Failed to create runtime directory")
+        .unwrap();
 
     let formatter = Formatter3164 {
         facility: Facility::LOG_DAEMON,
@@ -281,15 +329,14 @@ fn main() {
         pid: 0,
     };
 
-    let mut wdm = HashMap::new();
     let logger = syslog::unix(formatter).expect("Failed to open syslog");
     log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
         .map(|()| log::set_max_level(LevelFilter::Debug))
         .expect("Failed to setup logger");
 
+    let mut state = load_index(&args.working_directory);
+    let mut wdm = HashMap::new();
     let mut buffer = [0; 1024];
-    let _ = unlink(SOCK_PATH);
-    let listener = UnixListener::bind(SOCK_PATH).unwrap();
     let mut inotify = Inotify::init().expect("Failed to intialize inotify object");
     for (k, _) in state.files.clone() {
         let wd = inotify
@@ -337,19 +384,20 @@ fn main() {
             info!("Received SIGHUP, reloading index");
             // XXX: Please observe that this discards the current
             // state. This is likely not desired during normal execution
-            state = load_index();
+            state = load_index(&args.working_directory);
             reload = true;
         }
 
         if reload {
             info!("Reloading inotify watches");
             for (k, _) in state.files.clone() {
-                let wd = inotify
-                    .add_watch(&k, WatchMask::CLOSE_WRITE)
-                    .unwrap_or_else(|_| panic!("Failed to add watch for {}", k));
-
-                wdm.insert(wd, k);
+                if let Ok(wd) = inotify.add_watch(&k, WatchMask::CLOSE_WRITE) {
+                    wdm.insert(wd, k);
+                } else {
+                    error!("Failed to add watch for {k}");
+                }
             }
+
             rfd = vec![listener.as_raw_fd(), inotify.as_raw_fd()]
                 .iter()
                 .map(|x| PollFd::new(*x, PollFlags::POLLIN))
@@ -361,18 +409,22 @@ fn main() {
             continue;
         }
 
-        for e in events.unwrap() {
+        for e in events.context("Events error").unwrap() {
             debug!("Processing inotify event {:?}", e);
             let name = wdm[&e.wd].clone();
             if args.persistent && e.mask == EventMask::IGNORED {
                 if let Ok(wd) = inotify.add_watch(&name, WatchMask::CLOSE_WRITE) {
                     wdm.remove(&e.wd);
                     wdm.insert(wd, name.clone());
+                } else {
+                    warn!("Failed to add watch for {}", name);
                 }
-                warn!("Failed to add watch for {}", name);
             }
 
-            action(&mut state, &name).unwrap();
+            match action(&mut state, &name) {
+                Ok(_) => {}
+                Err(msg) => error!("{}", msg),
+            };
         }
     }
     state.save(INDEX).unwrap();

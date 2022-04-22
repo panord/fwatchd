@@ -33,6 +33,13 @@ pub fn build() -> clap::Command<'static> {
     );
 
     app = app.subcommand(
+        Command::new("select")
+            .about("list available file snapshots")
+            .arg(Arg::new("file").takes_value(true))
+            .arg(Arg::new("hash").takes_value(true)),
+    );
+
+    app = app.subcommand(
         Command::new("echo")
             .about("Test unix socket for daemon")
             .arg(Arg::new("message").takes_value(true)),
@@ -97,6 +104,30 @@ fn list(args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
+fn select(args: &ArgMatches) -> Result<()> {
+    let sel: (String, String) = (
+        args.value_of_t("file").context("No pattern provided")?,
+        args.value_of_t("hash").context("No pattern provided")?,
+    );
+    let mut stream = UnixStream::connect(SOCK_PATH).context("Failed to open socket")?;
+    let mut response = String::new();
+    let payload = bincode::serialize(&sel).context("Failed to serialize payload")?;
+    let pkt = Packet {
+        command: flib::Command::SELECT,
+        payload,
+    };
+
+    stream
+        .write_all(&bincode::serialize(&pkt)?)
+        .context("Failed to write to socket")?;
+    stream
+        .read_to_string(&mut response)
+        .context("Failed to read from socket")?;
+
+    println!("{}", response);
+    Ok(())
+}
+
 fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
     let msg: String = args
         .value_of_t("message")
@@ -124,6 +155,7 @@ fn dispatch(app: &mut Command, matches: &ArgMatches) {
     if let Err(msg) = match matches.subcommand() {
         Some(("track", sargs)) => track(sargs),
         Some(("list", sargs)) => list(sargs),
+        Some(("select", sargs)) => select(sargs),
         Some(("echo", sargs)) => echo(sargs, false),
         Some(("echoerr", sargs)) => echo(sargs, true),
         None => {
