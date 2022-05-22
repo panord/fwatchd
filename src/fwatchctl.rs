@@ -5,10 +5,10 @@ use std::io::prelude::*;
 use std::os::unix::net::UnixStream;
 
 pub fn build() -> clap::Command<'static> {
-    let mut app = Command::new("flog - the forgetful file log.")
+    let mut app = Command::new("fwatch - the forgetful file log.")
         .version("2021")
         .author("Patrik Lundgren <patrik.lundgren.95@gmail.com>")
-        .about("flog has a short but excellent memory, it remembers file(s) by name and \n");
+        .about("fwatch has a short but excellent memory, it remembers file(s) by name and \n");
 
     app = app.subcommand(
         Command::new("track")

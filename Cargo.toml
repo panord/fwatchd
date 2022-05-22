@@ -1,21 +1,21 @@
 [package]
-name = "flog"
+name = "fwatch"
 version = "0.1.0"
 authors = ["Patrik Lundgren <patrik.lundgren.95@gmail.com>"]
 edition = "2018"
-default-run = "flogd"
+default-run = "fwatchd"
 
 [lib]
 name = "flib"
 path = "src/lib.rs"
 
 [[bin]]
-name = "flogctl"
-path = "src/flogctl.rs"
+name = "fwatchctl"
+path = "src/fwatchctl.rs"
 
 [[bin]]
-name = "flogd"
-path = "src/flogd.rs"
+name = "fwatchd"
+path = "src/fwatchd.rs"
 
 [dependencies]
 dirs = "3.0"
