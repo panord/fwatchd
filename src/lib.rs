@@ -51,7 +51,7 @@ pub struct State {
     pub files: HashMap<String, Entry>,
 }
 
-pub const SOCK_PATH: &str = "/var/run/flogd.socket";
+pub const SOCK_PATH: &str = "/var/run/fwatchd.socket";
 
 impl State {
     pub fn load(f: &str) -> Result<State> {

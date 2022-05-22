@@ -24,8 +24,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{atomic::AtomicBool, atomic::Ordering, Arc};
 use syslog::{BasicLogger, Facility, Formatter3164};
 
-const INDEX: &str = "/var/run/flog/index";
-const INDEXD: &str = "/var/run/flog/index.d";
+const INDEX: &str = "/var/run/fwatch/index";
+const INDEXD: &str = "/var/run/fwatch/index.d";
 
 pub fn load_index(workdir: &str) -> State {
     State::load(&format!("{workdir}/index")).unwrap_or_else(|_| State::new())
@@ -37,13 +37,13 @@ struct Args {
     /// Persistently try to setup a new inotify watch when IN_IGNORE event is received
     #[clap(short, long)]
     persistent: bool,
-    #[clap(long, default_value = "/var/run/flog.pid")]
+    #[clap(long, default_value = "/var/run/fwatch.pid")]
     pid_file: String,
-    #[clap(short, long, default_value = "flog")]
+    #[clap(short, long, default_value = "fwatch")]
     user: String,
-    #[clap(short, long, default_value = "flog")]
+    #[clap(short, long, default_value = "fwatch")]
     group: String,
-    #[clap(short, long, default_value = "/var/run/flog")]
+    #[clap(short, long, default_value = "/var/run/fwatch")]
     working_directory: String,
     #[clap(long)]
     foreground: bool,
@@ -325,7 +325,7 @@ fn main() {
     let formatter = Formatter3164 {
         facility: Facility::LOG_DAEMON,
         hostname: None,
-        process: "flog".into(),
+        process: "fwatch".into(),
         pid: 0,
     };
 
