@@ -5,7 +5,7 @@ use crypto::sha2;
 use daemonize::Daemonize;
 use flib::*;
 use inotify::{EventMask, Inotify, WatchMask};
-use log::{debug, error, info, warn, LevelFilter};
+use log::{debug, error, info, warn, Level, LevelFilter};
 #[cfg(target_os = "macos")]
 use nix::poll::poll;
 #[cfg(target_os = "linux")]
@@ -322,17 +322,27 @@ fn main() {
         .context("Failed to create runtime directory")
         .unwrap();
 
-    let formatter = Formatter3164 {
-        facility: Facility::LOG_DAEMON,
-        hostname: None,
-        process: "fwatch".into(),
-        pid: 0,
-    };
-
-    let logger = syslog::unix(formatter).expect("Failed to open syslog");
-    log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
-        .map(|()| log::set_max_level(LevelFilter::Debug))
+    if args.foreground {
+        log::set_logger(&StdoutLog {
+            level: Level::Debug,
+        })
         .expect("Failed to setup logger");
+        log::set_max_level(LevelFilter::Debug);
+        println!("Setting up stdoutlog");
+        error!("hej");
+    } else {
+        let formatter = Formatter3164 {
+            facility: Facility::LOG_DAEMON,
+            hostname: None,
+            process: "fwatch".into(),
+            pid: 0,
+        };
+        let logger = syslog::unix(formatter).expect("Failed to open syslog");
+
+        log::set_boxed_logger(Box::new(BasicLogger::new(logger)))
+            .map(|()| log::set_max_level(LevelFilter::Debug))
+            .expect("Failed to setup logger");
+    };
 
     let mut state = load_index(&args.working_directory);
     let mut wdm = HashMap::new();
