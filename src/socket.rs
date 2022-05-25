@@ -1,8 +1,6 @@
-use anyhow::{Context, Result};
 use log::{Level, Log, Metadata, Record};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::prelude::*;
 
 pub struct StdoutLog {
     pub level: Level,
@@ -63,40 +61,4 @@ pub struct Entry {
     pub alias: Alias,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct State {
-    pub files: HashMap<String, Entry>,
-}
-
 pub const SOCK_PATH: &str = "/var/run/fwatchd.socket";
-
-impl State {
-    pub fn load(f: &str) -> Result<State> {
-        let state = serde_json::from_reader::<std::fs::File, Self>(
-            std::fs::File::open(f).context("Could not open file")?,
-        )?;
-
-        Ok(state)
-    }
-
-    pub fn save(&self, path: &str) -> Result<State> {
-        let json = serde_json::to_string_pretty(&self).context("Failed to serialize state")?;
-        std::fs::File::create(&path)
-            .and_then(|mut f| f.write_all(json.as_bytes()))
-            .context(format!("Failed to save file {path}"))?;
-
-        Ok(self.clone())
-    }
-
-    pub fn new() -> State {
-        State {
-            files: HashMap::new(),
-        }
-    }
-}
-
-impl Default for State {
-    fn default() -> Self {
-        Self::new()
-    }
-}
