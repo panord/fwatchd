@@ -4,10 +4,6 @@ version = "0.1.0"
 authors = ["Patrik Lundgren <patrik.lundgren.95@gmail.com>"]
 edition = "2018"
 
-[lib]
-name = "flib"
-path = "src/lib.rs"
-
 [[bin]]
 name = "fwatchctl"
 path = "src/fwatchctl.rs"

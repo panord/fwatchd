@@ -1,10 +1,11 @@
+mod socket;
 use anyhow::{anyhow, Context, Result};
 use clap::{Arg, ArgMatches, Command};
-use flib::*;
+use socket::*;
 use std::io::prelude::*;
 use std::os::unix::net::UnixStream;
 
-pub fn build() -> clap::Command<'static> {
+fn build() -> clap::Command<'static> {
     let mut app = Command::new("fwatchd - A file watching daemon")
         .version("2021")
         .author("Patrik Lundgren <patrik.lundgren.95@gmail.com>")
@@ -74,7 +75,7 @@ fn track(args: &ArgMatches) -> Result<()> {
     let mut response = String::new();
 
     let pkt = Packet {
-        command: flib::Command::TRACK,
+        command: socket::Command::TRACK,
         payload,
     };
     stream.write_all(&bincode::serialize(&pkt)?)?;
@@ -94,7 +95,7 @@ fn list(args: &ArgMatches) -> Result<()> {
     let mut response = String::new();
     let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
     let pkt = Packet {
-        command: flib::Command::LIST,
+        command: socket::Command::LIST,
         payload,
     };
 
@@ -113,7 +114,7 @@ fn select(args: &ArgMatches) -> Result<()> {
     let mut response = String::new();
     let payload = bincode::serialize(&sel).context("Failed to serialize payload")?;
     let pkt = Packet {
-        command: flib::Command::SELECT,
+        command: socket::Command::SELECT,
         payload,
     };
 
@@ -138,9 +139,9 @@ fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
     let payload = bincode::serialize(&msg).context("Failed to serialize payload")?;
     let pkt = Packet {
         command: if is_err {
-            flib::Command::ECHOERR
+            socket::Command::ECHOERR
         } else {
-            flib::Command::ECHO
+            socket::Command::ECHO
         },
         payload,
     };

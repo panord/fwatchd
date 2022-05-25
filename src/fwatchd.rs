@@ -1,9 +1,9 @@
+mod socket;
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use crypto::digest::Digest;
 use crypto::sha2;
 use daemonize::Daemonize;
-use flib::*;
 use inotify::{EventMask, Inotify, WatchMask};
 use log::{debug, error, info, warn, Level, LevelFilter};
 #[cfg(target_os = "macos")]
@@ -14,7 +14,9 @@ use nix::poll::{PollFd, PollFlags};
 #[cfg(target_os = "linux")]
 use nix::sys::signal::SigSet;
 use nix::unistd::{chown, unlink, Gid, Uid};
+use serde::{Deserialize, Serialize};
 use signal_hook::flag;
+use socket::*;
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::io::{Read, Write};
@@ -27,7 +29,43 @@ use syslog::{BasicLogger, Facility, Formatter3164};
 const INDEX: &str = "/var/run/fwatch/index";
 const INDEXD: &str = "/var/run/fwatch/index.d";
 
-pub fn load_index(workdir: &str) -> State {
+#[derive(Clone, Serialize, Deserialize)]
+pub struct State {
+    pub files: HashMap<String, Entry>,
+}
+
+impl State {
+    pub fn load(f: &str) -> Result<State> {
+        let state = serde_json::from_reader::<std::fs::File, Self>(
+            std::fs::File::open(f).context("Could not open file")?,
+        )?;
+
+        Ok(state)
+    }
+
+    pub fn save(&self, path: &str) -> Result<State> {
+        let json = serde_json::to_string_pretty(&self).context("Failed to serialize state")?;
+        std::fs::File::create(&path)
+            .and_then(|mut f| f.write_all(json.as_bytes()))
+            .context(format!("Failed to save file {path}"))?;
+
+        Ok(self.clone())
+    }
+
+    pub fn new() -> State {
+        State {
+            files: HashMap::new(),
+        }
+    }
+}
+
+impl Default for State {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+fn load_index(workdir: &str) -> State {
     State::load(&format!("{workdir}/index")).unwrap_or_else(|_| State::new())
 }
 
