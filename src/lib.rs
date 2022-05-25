@@ -10,11 +10,9 @@ pub struct StdoutLog {
 
 impl Log for StdoutLog {
     fn enabled(&self, meta: &Metadata<'_>) -> bool {
-        println!("log active?");
         meta.level() <= self.level
     }
     fn log(&self, record: &Record<'_>) {
-        println!("trying to log");
         if self.enabled(record.metadata()) {
             println!("{}: {}", record.level(), record.args());
         }

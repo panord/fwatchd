@@ -312,7 +312,7 @@ fn main() {
 
         if !args.foreground {
             match daemonize.start() {
-                Ok(_) => error!("Daemonized!"),
+                Ok(_) => {}
                 Err(e) => println!("Failed to daemonize: {}", e),
             }
         }
@@ -328,8 +328,6 @@ fn main() {
         })
         .expect("Failed to setup logger");
         log::set_max_level(LevelFilter::Debug);
-        println!("Setting up stdoutlog");
-        error!("hej");
     } else {
         let formatter = Formatter3164 {
             facility: Facility::LOG_DAEMON,
