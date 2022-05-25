@@ -308,6 +308,9 @@ fn main() {
                 chown(&ddir, Some(Uid::from_raw(uid)), Some(Gid::from_raw(gid)))
                     .context("Failed to change owner/group of working directory")
                     .unwrap();
+                chown(&ddir, None, Some(Gid::from_raw(gid)))
+                    .context("Failed to change owner/group of socket")
+                    .unwrap();
             });
 
         if !args.foreground {
