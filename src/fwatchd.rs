@@ -347,11 +347,11 @@ fn main() {
     let mut buffer = [0; 1024];
     let mut inotify = Inotify::init().expect("Failed to intialize inotify object");
     for (k, _) in state.files.clone() {
-        let wd = inotify
-            .add_watch(&k, WatchMask::CLOSE_WRITE)
-            .unwrap_or_else(|_| panic!("Failed to add watch for {}", k));
-
-        wdm.insert(wd, k);
+        if let Ok(wd) = inotify.add_watch(&k, WatchMask::CLOSE_WRITE) {
+            wdm.insert(wd, k);
+        } else {
+            error!("Failed to add watch for {k}");
+        }
     }
 
     let mut rfd: Vec<PollFd> = vec![listener.as_raw_fd(), inotify.as_raw_fd()]
