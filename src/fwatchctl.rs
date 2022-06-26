@@ -17,11 +17,15 @@ fn build() -> clap::Command<'static> {
             .arg(Arg::new("file").required(true).takes_value(true))
             .arg(
                 Arg::new("script")
+                    .long("script")
+                    .value_name("SCRIPT")
                     .takes_value(true)
                     .help("command which is executed on events"),
             )
             .arg(
                 Arg::new("alias")
+                    .long("alias")
+                    .value_name("ALIAS")
                     .takes_value(true)
                     .help("Script called to determine an alias for a file given an event"),
             ),
