@@ -30,12 +30,12 @@ const INDEX: &str = "/var/run/fwatch/index";
 const INDEXD: &str = "/var/run/fwatch/index.d";
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct State {
-    pub files: HashMap<String, Entry>,
+struct State {
+    files: HashMap<String, Entry>,
 }
 
 impl State {
-    pub fn load(f: &str) -> Result<State> {
+    fn load(f: &str) -> Result<State> {
         let state = serde_json::from_reader::<std::fs::File, Self>(
             std::fs::File::open(f).context("Could not open file")?,
         )?;
@@ -43,7 +43,7 @@ impl State {
         Ok(state)
     }
 
-    pub fn save(&self, path: &str) -> Result<State> {
+    fn save(&self, path: &str) -> Result<State> {
         let json = serde_json::to_string_pretty(&self).context("Failed to serialize state")?;
         std::fs::File::create(&path)
             .and_then(|mut f| f.write_all(json.as_bytes()))
@@ -52,7 +52,7 @@ impl State {
         Ok(self.clone())
     }
 
-    pub fn new() -> State {
+    fn new() -> State {
         State {
             files: HashMap::new(),
         }
