@@ -1,8 +1,21 @@
 [package]
 name = "fwatchd"
 version = "0.1.0"
+description = "fwatchd - A file watching daemon"
 authors = ["Patrik Lundgren <patrik.lundgren.95@gmail.com>"]
+repository = "https://github.com/PatrikLundgren/fwatchd"
+license = "MIT"
+readme = "README.md"
 edition = "2018"
+include = [
+	"src/**/*",
+	"Cargo.toml",
+	"LICENSE",
+	"README.md"
+]
+documentation = "https://docs.rs/fwatchd"
+keywords = ["cli", "daemon", "notify", "watch"]
+categories = ["command-line-interface"]
 
 [[bin]]
 name = "fwatchctl"
