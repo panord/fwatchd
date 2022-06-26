@@ -62,12 +62,12 @@ fn build() -> clap::Command<'static> {
 fn track(args: &ArgMatches) -> Result<()> {
     let fpath: String = args.value_of_t("file").context("No pattern provided")?;
     let action = match args.value_of_t::<String>("script") {
-        Ok(path) => Action::SCRIPT(path),
-        _ => Action::SAVE,
+        Ok(path) => Action::Script(path),
+        _ => Action::Save,
     };
     let alias: Alias = match args.value_of_t::<String>("alias") {
-        Ok(spath) => Alias::SCRIPT(spath),
-        _ => Alias::BASENAME,
+        Ok(spath) => Alias::Script(spath),
+        _ => Alias::Basename,
     };
     let track = Track {
         fpath,
@@ -79,7 +79,7 @@ fn track(args: &ArgMatches) -> Result<()> {
     let mut response = String::new();
 
     let pkt = Packet {
-        command: socket::Command::TRACK,
+        command: socket::Command::Track,
         payload,
     };
     stream.write_all(&bincode::serialize(&pkt)?)?;
@@ -99,7 +99,7 @@ fn list(args: &ArgMatches) -> Result<()> {
     let mut response = String::new();
     let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
     let pkt = Packet {
-        command: socket::Command::LIST,
+        command: socket::Command::List,
         payload,
     };
 
@@ -118,7 +118,7 @@ fn select(args: &ArgMatches) -> Result<()> {
     let mut response = String::new();
     let payload = bincode::serialize(&sel).context("Failed to serialize payload")?;
     let pkt = Packet {
-        command: socket::Command::SELECT,
+        command: socket::Command::Select,
         payload,
     };
 
@@ -143,9 +143,9 @@ fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
     let payload = bincode::serialize(&msg).context("Failed to serialize payload")?;
     let pkt = Packet {
         command: if is_err {
-            socket::Command::ECHOERR
+            socket::Command::Echoerr
         } else {
-            socket::Command::ECHO
+            socket::Command::Echo
         },
         payload,
     };

@@ -20,18 +20,18 @@ impl Log for StdoutLog {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
-    ECHOERR,
-    ECHO,
-    LIST,
-    TRACK,
-    SELECT,
+    Echoerr,
+    Echo,
+    List,
+    Track,
+    Select,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum Alias {
-    SCRIPT(String),
-    BASENAME,
-    NAME(String),
+    Script(String),
+    Basename,
+    Name(String),
 }
 
 #[derive(Serialize, Deserialize)]
@@ -42,8 +42,8 @@ pub struct Packet {
 
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub enum Action {
-    SAVE,
-    SCRIPT(String),
+    Save,
+    Script(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
