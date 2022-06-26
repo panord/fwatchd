@@ -142,14 +142,14 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
     let fpath = std::path::Path::new(&fname);
 
     let astr = match alias.clone() {
-        Alias::BASENAME => Path::new(&fname)
+        Alias::Basename => Path::new(&fname)
             .file_name()
             .ok_or_else(|| anyhow!("Could not determine basename"))?
             .to_str()
             .ok_or_else(|| anyhow!("Could not convert to str"))?
             .to_string(),
-        Alias::NAME(name) => name,
-        Alias::SCRIPT(spath) => String::from_utf8(
+        Alias::Name(name) => name,
+        Alias::Script(spath) => String::from_utf8(
             std::process::Command::new(spath)
                 .arg(&fname)
                 .output()?
@@ -171,7 +171,7 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
         .files
         .entry(fpath.display().to_string())
         .or_insert(Entry {
-            action: Action::SAVE,
+            action: Action::Save,
             alias: alias.clone(),
             snapshots: HashMap::default(),
         })
@@ -284,14 +284,14 @@ fn process(socket: &mut UnixStream, state: &mut State) -> bool {
     if socket.read(&mut buf).is_ok() {
         let pkt = bincode::deserialize::<Packet>(&buf).unwrap();
         let res = match pkt.command {
-            Command::ECHOERR => echoerr(&pkt),
-            Command::ECHO => echo(&pkt),
-            Command::LIST => list(state, &pkt),
-            Command::SELECT => {
+            Command::Echoerr => echoerr(&pkt),
+            Command::Echo => echo(&pkt),
+            Command::List => list(state, &pkt),
+            Command::Select => {
                 reload = true;
                 select(state, &pkt)
             }
-            Command::TRACK => {
+            Command::Track => {
                 reload = true;
                 track(state, &pkt)
             }
@@ -340,8 +340,8 @@ fn action(state: &mut State, fname: &str) -> Result<()> {
 
     info!("Action {:?} on {:?}", &entry.action, &fname);
     match &entry.action {
-        Action::SAVE => save(state, fname, &entry.alias),
-        Action::SCRIPT(spath) => script(fname, spath),
+        Action::Save => save(state, fname, &entry.alias),
+        Action::Script(spath) => script(fname, spath),
     }
 }
 
