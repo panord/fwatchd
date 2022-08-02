@@ -13,7 +13,6 @@ include = [
 	"LICENSE",
 	"README.md"
 ]
-documentation = "https://docs.rs/fwatchd"
 keywords = ["cli", "daemon", "notify", "watch"]
 categories = ["command-line-interface"]
 
