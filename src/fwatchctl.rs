@@ -1,15 +1,19 @@
 mod socket;
 use anyhow::{anyhow, Context, Result};
-use clap::{Arg, ArgMatches, Command};
+use clap::{Arg, ArgMatches, Command, Parser};
 use socket::*;
 use std::io::prelude::*;
 use std::os::unix::net::UnixStream;
+use std::path::PathBuf;
 
 fn build() -> clap::Command<'static> {
     let mut app = Command::new("fwatchd - A file watching daemon")
         .version("2021")
         .author("Patrik Lundgren <patrik.lundgren.95@gmail.com>")
-        .about("fwatch utilizes the inotity API to watch files \n");
+        .about("fwatch utilizes the inotity API to watch files \n")
+        .arg(Arg::new().long("working_directory").takes_value(true).default_value("/var/run/fwatch").help(
+            "Directory used for run time state, needs to match working directory of fwatchd",
+        ));
 
     app = app.subcommand(
         Command::new("track")
@@ -65,6 +69,11 @@ fn track(args: &ArgMatches) -> Result<()> {
         Ok(path) => Action::Script(path),
         _ => Action::Save,
     };
+    let sock_path = PathBuf::from(format!(
+        "{}/{}",
+        args.value_of_t::<String>("working_directory"),
+        "fwatchd.socket"
+    )?);
     let alias: Alias = match args.value_of_t::<String>("alias") {
         Ok(spath) => Alias::Script(spath),
         _ => Alias::Basename,
@@ -75,7 +84,7 @@ fn track(args: &ArgMatches) -> Result<()> {
         action,
     };
     let payload = bincode::serialize(&track).context("Failed to serialize payload")?;
-    let mut stream = UnixStream::connect(SOCK_PATH)?;
+    let mut stream = UnixStream::connect(sock_path)?;
     let mut response = String::new();
 
     let pkt = Packet {
@@ -95,7 +104,8 @@ fn list(args: &ArgMatches) -> Result<()> {
         .or_else(|| Some("*".to_string()))
         .context("No pattern provided")?;
 
-    let mut stream = UnixStream::connect(SOCK_PATH)?;
+    let sock_path = PathBuf::from(format!("{}/{}", args.working_directory, "fwatchd.socket"));
+    let mut stream = UnixStream::connect(&sock_path)?;
     let mut response = String::new();
     let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
     let pkt = Packet {
@@ -114,7 +124,8 @@ fn select(args: &ArgMatches) -> Result<()> {
         args.value_of_t("file").context("No pattern provided")?,
         args.value_of_t("hash").context("No pattern provided")?,
     );
-    let mut stream = UnixStream::connect(SOCK_PATH).context("Failed to open socket")?;
+    let sock_path = PathBuf::from(format!("{}/{}", args.working_directory, "fwatchd.socket"));
+    let mut stream = UnixStream::connect(&sock_path)?;
     let mut response = String::new();
     let payload = bincode::serialize(&sel).context("Failed to serialize payload")?;
     let pkt = Packet {
@@ -138,7 +149,8 @@ fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
         .value_of_t("message")
         .ok()
         .context("No message provided")?;
-    let mut stream = UnixStream::connect(SOCK_PATH)?;
+    let sock_path = PathBuf::from(format!("{}/{}", args.working_directory, "fwatchd.socket"));
+    let mut stream = UnixStream::connect(&sock_path)?;
     let mut response = String::new();
     let payload = bincode::serialize(&msg).context("Failed to serialize payload")?;
     let pkt = Packet {
@@ -174,6 +186,7 @@ fn dispatch(app: &mut Command, matches: &ArgMatches) {
 }
 
 fn main() {
+    let args = Args::parse();
     let mut app = build();
     let matches = app.clone().try_get_matches();
     match matches {

@@ -347,8 +347,9 @@ fn action(state: &mut State, fname: &str) -> Result<()> {
 
 fn main() {
     let args = Args::parse();
-    let _ = unlink(SOCK_PATH);
-    let listener = UnixListener::bind(SOCK_PATH).unwrap();
+    let sock_path = PathBuf::from(format!("{}/{}", args.working_directory, "fwatchd.socket"));
+    let _ = unlink(&sock_path);
+    let listener = UnixListener::bind(&sock_path).unwrap();
 
     let wdir = args.working_directory.clone();
     let ddir = PathBuf::from(&wdir);
@@ -378,7 +379,7 @@ fn main() {
                 chown(&ddir, Some(Uid::from_raw(uid)), Some(Gid::from_raw(gid)))
                     .context("Failed to change owner/group of working directory")
                     .unwrap();
-                chown(&PathBuf::from(SOCK_PATH), None, Some(Gid::from_raw(gid)))
+                chown(&PathBuf::from(sock_path), None, Some(Gid::from_raw(gid)))
                     .context("Failed to change owner/group of socket")
                     .unwrap();
             });

@@ -60,5 +60,3 @@ pub struct Entry {
     pub action: Action,
     pub alias: Alias,
 }
-
-pub const SOCK_PATH: &str = "/var/run/fwatchd.socket";
