@@ -1,78 +1,15 @@
 mod socket;
 use anyhow::{anyhow, Context, Result};
-use clap::{Arg, ArgMatches, Command};
+use clap::{Parser, Subcommand};
 use socket::*;
 use std::io::prelude::*;
 use std::os::unix::net::UnixStream;
 
-fn build() -> clap::Command<'static> {
-    let mut app = Command::new("fwatchd - A file watching daemon")
-        .version("2021")
-        .author("Patrik Lundgren <patrik.lundgren.95@gmail.com>")
-        .about("fwatch utilizes the inotity API to watch files \n");
-
-    app = app.subcommand(
-        Command::new("track")
-            .about("track file, take snapshot when changed.")
-            .arg(Arg::new("file").required(true).takes_value(true))
-            .arg(
-                Arg::new("script")
-                    .long("script")
-                    .value_name("SCRIPT")
-                    .takes_value(true)
-                    .help("command which is executed on events"),
-            )
-            .arg(
-                Arg::new("alias")
-                    .long("alias")
-                    .value_name("ALIAS")
-                    .takes_value(true)
-                    .help("Script called to determine an alias for a file given an event"),
-            ),
-    );
-
-    app = app.subcommand(
-        Command::new("list")
-            .about("list available file snapshots")
-            .arg(Arg::new("file").takes_value(true)),
-    );
-
-    app = app.subcommand(
-        Command::new("select")
-            .about("list available file snapshots")
-            .arg(Arg::new("file").takes_value(true))
-            .arg(Arg::new("hash").takes_value(true)),
-    );
-
-    app = app.subcommand(
-        Command::new("echo")
-            .about("Test unix socket for daemon")
-            .arg(Arg::new("message").takes_value(true)),
-    );
-
-    app = app.subcommand(
-        Command::new("echoerr")
-            .about("Test unix socket for daemon")
-            .arg(Arg::new("message").takes_value(true)),
-    );
-
-    app
-}
-
-fn track(args: &ArgMatches) -> Result<()> {
-    let fpath: String = args.value_of_t("file").context("No pattern provided")?;
-    let action = match args.value_of_t::<String>("script") {
-        Ok(path) => Action::Script(path),
-        _ => Action::Save,
-    };
-    let alias: Alias = match args.value_of_t::<String>("alias") {
-        Ok(spath) => Alias::Script(spath),
-        _ => Alias::Basename,
-    };
+fn track(args: &TrackArgs) -> Result<()> {
     let track = Track {
-        fpath,
-        alias,
-        action,
+        fpath: args.file.clone(),
+        alias: Alias::Basename,
+        action: Action::Save,
     };
     let payload = bincode::serialize(&track).context("Failed to serialize payload")?;
     let mut stream = UnixStream::connect(SOCK_PATH)?;
@@ -88,13 +25,8 @@ fn track(args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn list(args: &ArgMatches) -> Result<()> {
-    let payload: String = args
-        .value_of_t("file")
-        .ok()
-        .or_else(|| Some("*".to_string()))
-        .context("No pattern provided")?;
-
+fn list(args: &ListArgs) -> Result<()> {
+    let payload: String = args.file.clone();
     let mut stream = UnixStream::connect(SOCK_PATH)?;
     let mut response = String::new();
     let payload = bincode::serialize(&payload).context("Failed to serialize payload")?;
@@ -109,11 +41,8 @@ fn list(args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn select(args: &ArgMatches) -> Result<()> {
-    let sel: (String, String) = (
-        args.value_of_t("file").context("No pattern provided")?,
-        args.value_of_t("hash").context("No pattern provided")?,
-    );
+fn select(args: &SelectArgs) -> Result<()> {
+    let sel: (String, String) = (args.file.clone(), args.hash.clone());
     let mut stream = UnixStream::connect(SOCK_PATH).context("Failed to open socket")?;
     let mut response = String::new();
     let payload = bincode::serialize(&sel).context("Failed to serialize payload")?;
@@ -133,11 +62,8 @@ fn select(args: &ArgMatches) -> Result<()> {
     Ok(())
 }
 
-fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
-    let msg: String = args
-        .value_of_t("message")
-        .ok()
-        .context("No message provided")?;
+fn echo(args: &EchoArgs, is_err: bool) -> Result<()> {
+    let msg: String = args.message.clone();
     let mut stream = UnixStream::connect(SOCK_PATH)?;
     let mut response = String::new();
     let payload = bincode::serialize(&msg).context("Failed to serialize payload")?;
@@ -156,28 +82,58 @@ fn echo(args: &ArgMatches, is_err: bool) -> Result<()> {
     Ok(())
 }
 
-fn dispatch(app: &mut Command, matches: &ArgMatches) {
-    if let Err(msg) = match matches.subcommand() {
-        Some(("track", sargs)) => track(sargs),
-        Some(("list", sargs)) => list(sargs),
-        Some(("select", sargs)) => select(sargs),
-        Some(("echo", sargs)) => echo(sargs, false),
-        Some(("echoerr", sargs)) => echo(sargs, true),
-        None => {
-            println!("{}", app.render_usage());
-            Ok(())
-        }
-        _ => Err(anyhow!("Unrecognized command")),
-    } {
-        println!("{}", msg);
-    }
+#[derive(Parser, Debug, Clone)]
+struct SelectArgs {
+    #[arg(short, long)]
+    file: String,
+    #[arg(short, long)]
+    hash: String,
+}
+
+#[derive(Parser, Debug, Clone)]
+struct ListArgs {
+    #[arg(short, long)]
+    file: String,
+}
+
+#[derive(Parser, Debug, Clone)]
+struct TrackArgs {
+    #[arg(short, long)]
+    file: String,
+}
+
+#[derive(Parser, Debug, Clone)]
+struct EchoArgs {
+    #[arg(short, long)]
+    message: String,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+enum CtlCommand {
+    Track(TrackArgs),
+    List(ListArgs),
+    Select(SelectArgs),
+    Echo(EchoArgs),
+    EchoErr(EchoArgs),
+}
+
+#[derive(Parser, Debug)]
+#[clap(about, version, author)]
+struct Args {
+    #[command(subcommand)]
+    command: CtlCommand,
 }
 
 fn main() {
-    let mut app = build();
-    let matches = app.clone().try_get_matches();
-    match matches {
-        Ok(m) => dispatch(&mut app, &m),
-        Err(msg) => println!("{}", msg),
-    };
+    let app = Args::parse();
+    match app.command {
+        CtlCommand::Track(args) => track(&args),
+        CtlCommand::Select(args) => select(&args),
+        CtlCommand::List(args) => list(&args),
+        CtlCommand::Echo(args) => echo(&args, false),
+        CtlCommand::EchoErr(args) => echo(&args, true),
+        #[allow(unreachable_patterns)]
+        _ => Err(anyhow!("Unrecognized command")),
+    }
+    .unwrap();
 }
