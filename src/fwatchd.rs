@@ -77,7 +77,7 @@ impl State {
 
     fn save(&self, path: &str) -> Result<State> {
         let json = serde_json::to_string_pretty(&self).context("Failed to serialize state")?;
-        std::fs::File::create(&path)
+        std::fs::File::create(path)
             .and_then(|mut f| f.write_all(json.as_bytes()))
             .context(format!("Failed to save file {path}"))?;
 
@@ -131,7 +131,7 @@ fn script(fpath: &str, spath: &str) -> Result<()> {
 fn sha256sum(fpath: &Path) -> Result<String> {
     let mut contents = String::new();
     let mut hasher = sha2::Sha256::new();
-    let mut file = std::fs::File::open(&fpath)?;
+    let mut file = std::fs::File::open(fpath)?;
 
     file.read_to_string(&mut contents)?;
     hasher.input_str(&contents);
@@ -151,7 +151,7 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
         Alias::Name(name) => name,
         Alias::Script(spath) => String::from_utf8(
             std::process::Command::new(spath)
-                .arg(&fname)
+                .arg(fname)
                 .output()?
                 .stdout,
         )?
@@ -161,12 +161,12 @@ fn save(state: &mut State, fname: &str, alias: &Alias) -> Result<()> {
     let hash = sha256sum(fpath)?;
     let target = format!("{}/{}-{}", INDEXD, fpath.display(), &hash);
     std::fs::create_dir_all(
-        &std::path::Path::new(&target)
+        std::path::Path::new(&target)
             .parent()
             .context("Failed to create directory for target")
             .unwrap(),
     )?;
-    std::fs::copy(&fpath, &target).context("Failed to save file version")?;
+    std::fs::copy(fpath, &target).context("Failed to save file version")?;
     state
         .files
         .entry(fpath.display().to_string())
