@@ -25,7 +25,6 @@ name = "fwatchd"
 path = "src/fwatchd.rs"
 
 [dependencies]
-dirs = "3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 clap = { version = "4.1", features = ["derive"] }
