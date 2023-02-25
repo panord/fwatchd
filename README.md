@@ -1,7 +1,6 @@
 # fwatchd
 
 [![Latest Version](https://img.shields.io/crates/v/fwatchd.svg)](https://crates.io/crates/fwatchd/)
-[![docs](https://docs.rs/fwatchd/badge.svg)](https://docs.rs/fwatchd)
 
 fwatchd - A file watching daemon
 
