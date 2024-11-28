@@ -420,14 +420,14 @@ fn main() {
     let mut buffer = [0; 1024];
     let mut inotify = Inotify::init().expect("Failed to intialize inotify object");
     for (k, _) in state.files.clone() {
-        if let Ok(wd) = inotify.add_watch(&k, WatchMask::CLOSE_WRITE) {
+        if let Ok(wd) = inotify.watches().add(&k, WatchMask::CLOSE_WRITE) {
             wdm.insert(wd, k);
         } else {
             error!("Failed to add watch for {k}");
         }
     }
 
-    let mut rfd: Vec<PollFd> = vec![listener.as_raw_fd(), inotify.as_raw_fd()]
+    let mut rfd: Vec<PollFd> = [listener.as_raw_fd(), inotify.as_raw_fd()]
         .iter()
         .map(|x| PollFd::new(*x, PollFlags::all()))
         .collect();
@@ -472,14 +472,14 @@ fn main() {
         if reload {
             info!("Reloading inotify watches");
             for (k, _) in state.files.clone() {
-                if let Ok(wd) = inotify.add_watch(&k, WatchMask::CLOSE_WRITE) {
+                if let Ok(wd) = inotify.watches().add(&k, WatchMask::CLOSE_WRITE) {
                     wdm.insert(wd, k);
                 } else {
                     error!("Failed to add watch for {k}");
                 }
             }
 
-            rfd = vec![listener.as_raw_fd(), inotify.as_raw_fd()]
+            rfd = [listener.as_raw_fd(), inotify.as_raw_fd()]
                 .iter()
                 .map(|x| PollFd::new(*x, PollFlags::POLLIN))
                 .collect();
@@ -494,7 +494,7 @@ fn main() {
             debug!("Processing inotify event {:?}", e);
             let name = wdm[&e.wd].clone();
             if args.persistent && e.mask == EventMask::IGNORED {
-                if let Ok(wd) = inotify.add_watch(&name, WatchMask::CLOSE_WRITE) {
+                if let Ok(wd) = inotify.watches().add(&name, WatchMask::CLOSE_WRITE) {
                     wdm.remove(&e.wd);
                     wdm.insert(wd, name.clone());
                 } else {
